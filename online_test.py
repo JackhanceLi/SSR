@@ -309,13 +309,13 @@ def testing(raw_data, M, move_data, chan_num):
         except Exception as e:
             print(e)
 
-    elif M == 3:
-        move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1200ms数据
-        M = 4
+    # elif M == 3:
+    #     move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1250ms数据
+    #     M = 4
     # elif rms_rt > af * rms_rest and M == 2:
     elif M == 2:
         move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1000ms数据
-        M = 3
+        M = 4
     # elif rms_rt > af * rms_rest and M == 1:
     elif M == 1:
         move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共750ms数据
