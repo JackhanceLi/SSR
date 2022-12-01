@@ -361,7 +361,7 @@ if __name__ == '__main__':
     # 随机划分训练集和测试集
     trials_per_cla = int(len(epoch_data) / n_classes)
     tr_num = 30  # 每个类的训练样本数 int(trials_per_cla*0.7)
-    f_num = 60  # 一个试次一条通道的特征数量
+    f_num = 50  # 一个试次一条通道的特征数量
     rann = 5  # 随机次数
     folds = 5  # 6:2:2交叉验证折数
     acc_fold_ran = np.zeros((folds, rann))

@@ -328,7 +328,7 @@ def training(file_name, chan_num):
 
     # # 特征提取（多通道RMS特征）
     trials_per_cla = int(len(epoch_data) / n_classes)
-    f_num = 60  # 一个试次一条通道的特征数量
+    f_num = 50  # 一个试次一条通道的特征数量
     clf.append(f_num)
     len_move = int(0.05 * fs)  # 帧长（用于计算rms的运动数据长度）
     clf.append(len_move)
