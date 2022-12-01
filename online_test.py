@@ -169,124 +169,19 @@ def cnn(nb_classes, Chans=5, Samples=40, dropoutRate=0.5, kernLength=5, C1=16, D
     return Model(inputs=input, outputs=softmax)
 
 
-keypad_dict = {
-    '1': ['a', 'b', 'c', 'd', 'e'],
-    '2': ['f', 'g', 'h', 'i'],
-    '3': ['j', 'k', 'l', 'm'],
-    '6': ['n', 'o', 'p', 'q', 'r'],
-    '7': ['s', 't', 'u', 'v'],
-    '8': ['w', 'x', 'y', 'z'],
-}
+def cnn_best(nb_classes, Chans=5, Samples=40, dropoutRate=0.5, kernLength=5, C1=16, D=8, C2=16, D1=256, norm_rate=0.25):
+    input = Input(shape=(Chans, Samples, 1))
+    block = Conv2D(C1, (kernLength, kernLength), input_shape=(Chans, Samples, 1))(input)
+    block = BatchNormalization()(block)
+    block = Activation('relu')(block)
+    block = AveragePooling2D((1, 2))(block)
+    block = Dropout(dropoutRate)(block)
 
-NO_WORD = 0
-PARTIAL_WORD = 1
-WORD = 2
+    dense = Flatten()(block)
+    dense = Dense(nb_classes)(dense)
+    softmax = Activation('softmax')(dense)
 
-CACHE_SIZE = 8000
-file_cache = [-1 for i in range(CACHE_SIZE)]
-
-logger = logging.getLogger(__name__)
-
-
-class T9(object):
-    def __init__(self):
-        current_path = os.path.dirname(__file__)
-        self.library = open(current_path+'./plugin/library.t9l', 'rb')
-        self.results = [Results(keys="", words=[""], pres=[""])]
-        self.candidate_index = 0
-        self.displayed_words = ""
-
-    def on_key_press(self, key):
-        if keypad_dict.get(key):
-            result = self.get_words(input=key, last_result=self.results[-1])
-            logger.info("result: {}".format(result))
-            if result.is_valid():
-                self.results.append(result)
-            self.candidate_index = 0
-        if key == "space":
-            words = self.results[-1].words + self.results[-1].pres
-            self.displayed_words += words[self.candidate_index] + " "
-            self.results = [Results(keys="", words=[""], pres=[""])]
-            self.candidate_index = 0
-        if key == "backspace":
-            if len(self.results) > 1:
-                self.results.pop(-1)
-            elif len(self.displayed_words):
-                self.displayed_words = self.displayed_words[:-1]
-            self.candidate_index = 0
-        if key == "left":
-            if self.candidate_index > 0:
-                self.candidate_index -= 1
-        if key == "right":
-            if self.candidate_index + 1 < len(self.results[-1].words) + len(self.results[-1].pres):
-                self.candidate_index += 1
-        if key == "enter":
-            self.results = [Results(keys="", words=[""], pres=[""])]
-            self.candidate_index = 0
-
-        candidates = self.results[-1].words + self.results[-1].pres
-        if candidates == ["", ""]:
-            candidates = []
-        return self.displayed_words, candidates, self.candidate_index
-
-    def read_int(self, offset):
-        if offset < CACHE_SIZE:
-            cached = file_cache[offset]
-            if cached >= 0:
-                return cached
-        self.library.seek(offset * 3)
-        x = int.from_bytes(self.library.read(3), 'big')
-        if offset < CACHE_SIZE:
-            file_cache[offset] = x
-        return x
-
-    def search(self, offset, s: str):
-        if len(s) == 0:
-            file_val = self.read_int(offset)
-            return WORD if file_val == 1 else PARTIAL_WORD
-        else:
-            ch = ord(s[0]) - ord('a')
-            file_val = self.read_int(offset + 1 + ch)
-            if file_val == 0xFFFFFF:
-                return WORD if len(s) == 1 else NO_WORD
-            elif file_val > 0:
-                return self.search(file_val, s[1:])
-            return NO_WORD
-
-    def get_words(self, input, last_result):
-        chars = keypad_dict[input]
-        output_words = []
-        output_prefixes = []
-        current_prefix = last_result.words + last_result.pres
-        if current_prefix == ["", ""]:
-            current_prefix = [""]
-        for prefix in current_prefix:
-            for char in chars:
-                test_word = prefix + char
-                result = self.search(0, test_word)
-                if result == PARTIAL_WORD:
-                    output_prefixes.append(test_word)
-                elif result == WORD:
-                    output_words.append(test_word)
-        return Results(last_result.keys + input, output_words, output_prefixes)
-
-
-class Results(object):
-    __slots__ = ['keys', 'words', 'pres']
-
-    def __init__(self, keys, words, pres):
-        self.keys = keys
-        self.words = words
-        self.pres = pres
-
-    def __str__(self):
-        return f'keys: {self.keys}, words: {self.words}, pres: {self.pres}, valid: {self.is_valid()}'
-
-    def is_valid(self):
-        if (len(self.keys) != 0) and (len(self.words) + len(self.pres) == 0):
-            return False
-        else:
-            return True
+    return Model(inputs=input, outputs=softmax)
 
 
 def testing(raw_data, M, move_data, chan_num):
@@ -340,8 +235,8 @@ def testing(raw_data, M, move_data, chan_num):
 
     # 实时判断
     # if rms_rt > af * rms_rest and M == 3:
-    if M == 3:
-        move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1250ms数据
+    if M == 4:
+        move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1500ms数据
         # 识别运动开始时刻，并准确切分数据
         gap = int(0.025 * fs)  # 每隔Xms检测实时rms
         for k in range(int(move_data.shape[1] / gap)):
@@ -372,8 +267,8 @@ def testing(raw_data, M, move_data, chan_num):
         X_test = f_rms_te.copy()
         X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2], 1)
         kernLength, C1, D, D1 = clf[8], clf[9], clf[10], clf[11]
-        model = cnn(nb_classes=n_classes, Chans=f_rms_te.shape[1], Samples=f_rms_te.shape[2],
-                    dropoutRate=0.5, kernLength=kernLength, C1=C1, D=D, C2=32, D1=D1)
+        model = cnn_best(nb_classes=n_classes, Chans=f_rms_te.shape[1], Samples=f_rms_te.shape[2],
+                         dropoutRate=0.5, kernLength=kernLength, C1=C1, D=D, C2=32, D1=D1)
         model.load_weights(model_path + 'model.h5')
         probs = model.predict(X_test)
         y_pred = probs.argmax(axis=-1)
@@ -392,36 +287,39 @@ def testing(raw_data, M, move_data, chan_num):
         M = -1
 
         # tcpip发送指令
-        T9_KEYS = ["left", "1", "2", "3", "right", "space", "6", "7", "8", "backspace", "enter"]
-
-        t9 = T9()
-
-        key = T9_KEYS[int(y_pred[0])]
-        written_words, candidates, candidate_index = t9.on_key_press(key)
-        data = {
-            "finger": int(y_pred[0]),
-            "written": written_words,
-            "candidates": candidates,
-            "index": candidate_index,
-        }
-        print(data)
+        # T9_KEYS = ["left", "1", "2", "3", "right", "space", "6", "7", "8", "backspace", "enter"]
+        #
+        # t9 = T9()
+        #
+        # key = T9_KEYS[int(y_pred[0])]
+        # written_words, candidates, candidate_index = t9.on_key_press(key)
+        # data = {
+        #     "finger": int(y_pred[0]),
+        #     "written": written_words,
+        #     "candidates": candidates,
+        #     "index": candidate_index,
+        # }
+        # print(data)
         try:
             T9_DISPLAY_IP = "localhost"
             T9_DISPLAY_PORT = 9999
             t9_display_handler = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            t9_display_handler.sendto(json.dumps(data).encode(), (T9_DISPLAY_IP, T9_DISPLAY_PORT))
+            t9_display_handler.sendto(json.dumps(int(y_pred[0])).encode(), (T9_DISPLAY_IP, T9_DISPLAY_PORT))
+            # t9_display_handler.sendto(json.dumps(data).encode(), (T9_DISPLAY_IP, T9_DISPLAY_PORT))
         except Exception as e:
             print(e)
 
-
+    elif M == 3:
+        move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1200ms数据
+        M = 4
     # elif rms_rt > af * rms_rest and M == 2:
-    # elif M == 2:
-    #     move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1000ms数据
-    #     M = 3
+    elif M == 2:
+        move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共1000ms数据
+        M = 3
     # elif rms_rt > af * rms_rest and M == 1:
     elif M == 1:
         move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共750ms数据
-        M = 3
+        M = 2
     elif rms_rt > af * rms_rest and M == 0:
         move_data = np.concatenate((move_data, data.copy()), axis=1)  # 共500ms数据
         M = 1

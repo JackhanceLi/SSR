@@ -163,6 +163,21 @@ def cnn(nb_classes, Chans=5, Samples=40, dropoutRate=0.5, kernLength=5, C1=16, D
     return Model(inputs=input, outputs=softmax)
 
 
+def cnn_best(nb_classes, Chans=5, Samples=40, dropoutRate=0.5, kernLength=5, C1=16, D=8, C2=16, D1=256, norm_rate=0.25):
+    input = Input(shape=(Chans, Samples, 1))
+    block = Conv2D(C1, (kernLength, kernLength), input_shape=(Chans, Samples, 1))(input)
+    block = BatchNormalization()(block)
+    block = Activation('relu')(block)
+    block = AveragePooling2D((1, 2))(block)
+    block = Dropout(dropoutRate)(block)
+
+    dense = Flatten()(block)
+    dense = Dense(nb_classes)(dense)
+    softmax = Activation('softmax')(dense)
+
+    return Model(inputs=input, outputs=softmax)
+
+
 def training(file_name, chan_num):
     # file_name: 文件名称；chan_num：通道数目
     chan_num = int(chan_num)
@@ -312,7 +327,8 @@ def training(file_name, chan_num):
     # plt.show()
 
     # # 特征提取（多通道RMS特征）
-    f_num = 40  # 一个试次一条通道的特征数量
+    trials_per_cla = int(len(epoch_data) / n_classes)
+    f_num = 60  # 一个试次一条通道的特征数量
     clf.append(f_num)
     len_move = int(0.05 * fs)  # 帧长（用于计算rms的运动数据长度）
     clf.append(len_move)
@@ -348,7 +364,20 @@ def training(file_name, chan_num):
     X_train = f_rms_tr.copy()
     Y_train = labels.copy()
     Y_train[np.where(Y_train == 10)] = 0
-    X_train, X_validate, Y_train, Y_validate = train_test_split(X_train, Y_train, test_size=0.2)
+
+    # # 随机划分训练集验证集
+    # X_train, X_validate, Y_train, Y_validate = train_test_split(X_train, Y_train, test_size=0.25)
+    # # 前部分训练 后部分测试
+    tr_index = np.arange(0, int(trials_per_cla * 0.75))
+    te_index = list(set(list(np.arange(trials_per_cla))) - set(tr_index))
+    tr, te = [], []
+    for j in range(10):
+        tr.extend(np.where(Y_train == j)[0][tr_index])
+        te.extend(np.where(Y_train == j)[0][te_index])
+    X_validate = X_train[tuple([te])].copy()
+    Y_validate = Y_train[tuple([te])].copy()
+    X_train = X_train[tuple([tr])].copy()
+    Y_train = Y_train[tuple([tr])].copy()
 
     # convert labels to one-hot encodings.
     Y_train = np_utils.to_categorical(Y_train, n_classes)
@@ -357,13 +386,13 @@ def training(file_name, chan_num):
     X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], X_train.shape[2], 1)
     X_validate = X_validate.reshape(X_validate.shape[0], X_validate.shape[1], X_validate.shape[2], 1)
 
-    kernLength, C1, D, D1 = 5, 16, 8, 64
+    kernLength, C1, D, D1 = 5, 64, 8, 64
     clf.append(kernLength)
     clf.append(C1)
     clf.append(D)
     clf.append(D1)
-    model = cnn(nb_classes=n_classes, Chans=X_train.shape[1], Samples=X_train.shape[2],
-                dropoutRate=0.5, kernLength=kernLength, C1=C1, D=D, C2=32, D1=D1)
+    model = cnn_best(nb_classes=n_classes, Chans=X_train.shape[1], Samples=X_train.shape[2],
+                     dropoutRate=0.5, kernLength=kernLength, C1=C1, D=D, C2=32, D1=D1)
     print(model.summary())
 
     # compile the model and set the optimizers
@@ -383,8 +412,8 @@ def training(file_name, chan_num):
 
 
 if __name__ == '__main__':
-    # 4chan-20trials/classes:20221103T160037  5chan-60trials/classes:20221118T170945 20221121T161151 20221122T173103
-    # 5chan-40trials/classes:20221125T173457
+    # 4chan-20trials/classes:20221103T160037  5chan-60trials/classes:20221118T170945
+    # 5chan-45trials/classes:20221121T161151 20221122T173103  5chan-40trials/classes:20221125T173457
     file_name_ = './data/20221125T173457.txt'
     chan_num_ = 5
     training(file_name_, chan_num_)

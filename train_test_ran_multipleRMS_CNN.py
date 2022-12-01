@@ -159,11 +159,49 @@ def cnn(nb_classes, Chans=5, Samples=40, dropoutRate=0.5, kernLength=5, C1=16, D
     # block = AveragePooling2D((1, 4))(block)
     # block = Dropout(dropoutRate)(block)
 
-    dense = Flatten(name='flatten')(block)
+    dense = Flatten()(block)
     # dense = Dense(D1)(dense)
     # dense = Activation('relu')(dense)
     dense = Dense(nb_classes, kernel_constraint=max_norm(norm_rate))(dense)
-    softmax = Activation('softmax', name='softmax')(dense)
+    softmax = Activation('softmax')(dense)
+
+    return Model(inputs=input, outputs=softmax)
+
+
+def cnn_best(nb_classes, Chans=5, Samples=40, dropoutRate=0.5, kernLength=5, C1=16, D=8, C2=16, D1=256, norm_rate=0.25):
+    input = Input(shape=(Chans, Samples, 1))
+    block = Conv2D(C1, (kernLength, kernLength), input_shape=(Chans, Samples, 1))(input)
+    block = BatchNormalization()(block)
+    block = Activation('relu')(block)
+    block = AveragePooling2D((1, 2))(block)
+    block = Dropout(dropoutRate)(block)
+
+    dense = Flatten()(block)
+    dense = Dense(nb_classes)(dense)
+    softmax = Activation('softmax')(dense)
+
+    return Model(inputs=input, outputs=softmax)
+
+
+def cnn1(nb_classes, Chans=5, Samples=40, dropoutRate=0.5, kernLength=5, C1=16, D=8, C2=16, D1=256, norm_rate=0.25):
+    input = Input(shape=(Chans, Samples, 1))
+    block = Conv2D(C1, (1, 3), padding='same', input_shape=(Chans, Samples, 1))(input)
+    block = Conv2D(C1, (1, kernLength), padding='same', input_shape=(Chans, Samples, 1))(block)
+    block = BatchNormalization()(block)
+    # block = Conv2D(D, (1, kernLength))(block)
+    # block = SeparableConv2D(C1, kernel_size=(Chans, 1), depth_multiplier=D, depthwise_constraint=max_norm(1.), use_bias=False)(block)  # , padding='same'
+    # block = DepthwiseConv2D((Chans, 1), depth_multiplier=D, depthwise_constraint=max_norm(1.))(block)
+    # block = BatchNormalization()(block)
+    # block = Activation('relu')(block)
+    # block = MaxPooling2D((1, 2))(block)
+    block = AveragePooling2D((1, 2))(block)
+    block = Dropout(dropoutRate)(block)
+
+    dense = Flatten()(block)
+    # dense = Dense(D1)(dense)
+    # dense = Activation('relu')(dense)
+    dense = Dense(nb_classes)(dense)
+    softmax = Activation('softmax')(dense)
 
     return Model(inputs=input, outputs=softmax)
 
@@ -309,10 +347,21 @@ if __name__ == '__main__':
     #     plt.axvline(onset_[i], c='k')
     # plt.show()
 
+    # # 看一下每个类持续的时长
+    # for epo in range(len(onset)):
+    #     if not onset[epo]:
+    #         onset[epo] = [675, 700, 725, 750, 775, 800, 825, 850, 875, 900, 925, 950, 1000, 1025, 1225, 1250]  # 固定起始点
+    # a = [onset[i][-1] - onset[i][0] for i in range(len(onset))]
+    # a = np.array(a)
+    # aa = np.zeros((10, int(len(epoch_data) / n_classes)))
+    # for i in range(10):
+    #     aa[i] = a[np.where(labels == i + 1)]
+    # aa1 = np.average(aa, axis=1)
+
     # 随机划分训练集和测试集
     trials_per_cla = int(len(epoch_data) / n_classes)
     tr_num = 30  # 每个类的训练样本数 int(trials_per_cla*0.7)
-    f_num = 40  # 一个试次一条通道的特征数量
+    f_num = 60  # 一个试次一条通道的特征数量
     rann = 5  # 随机次数
     folds = 5  # 6:2:2交叉验证折数
     acc_fold_ran = np.zeros((folds, rann))
@@ -402,7 +451,20 @@ if __name__ == '__main__':
             Y_test = y_te.copy()
             Y_train[np.where(Y_train == 10)] = 0
             Y_test[np.where(Y_test == 10)] = 0
-            X_train, X_validate, Y_train, Y_validate = train_test_split(X_train, Y_train, test_size=0.25, random_state=ran)
+
+            # # 随机划分训练集验证集
+            # X_train, X_validate, Y_train, Y_validate = train_test_split(X_train, Y_train, test_size=0.25, random_state=ran)
+            # # 前部分训练 后部分测试
+            tr_index = np.arange(0, int((trials_per_cla-int(trials_per_cla*0.2))*0.75))
+            te_index = list(set(list(np.arange(trials_per_cla-int(trials_per_cla*0.2)))) - set(tr_index))
+            tr, te = [], []
+            for j in range(10):
+                tr.extend(np.where(Y_train==j)[0][tr_index])
+                te.extend(np.where(Y_train==j)[0][te_index])
+            X_validate = X_train[tuple([te])].copy()
+            Y_validate = Y_train[tuple([te])].copy()
+            X_train = X_train[tuple([tr])].copy()
+            Y_train = Y_train[tuple([tr])].copy()
 
             # convert labels to one-hot encodings.
             Y_train = np_utils.to_categorical(Y_train, n_classes)
@@ -413,8 +475,8 @@ if __name__ == '__main__':
             X_validate = X_validate.reshape(X_validate.shape[0], X_validate.shape[1], X_validate.shape[2], 1)
             X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2], 1)
 
-            kernLength, C1, D, D1 = 5, 16, 8, 64
-            model = cnn(nb_classes=n_classes, Chans=X_train.shape[1], Samples=X_train.shape[2],
+            kernLength, C1, D, D1 = 5, 64, 8, 64
+            model = cnn_best(nb_classes=n_classes, Chans=X_train.shape[1], Samples=X_train.shape[2],
                         dropoutRate=0.5, kernLength=kernLength, C1=C1, D=D, C2=32, D1=D1)
             print(model.summary())
 
@@ -461,7 +523,7 @@ if __name__ == '__main__':
             # plt.show()
 
             # testing
-            model1 = cnn(nb_classes=n_classes, Chans=X_train.shape[1], Samples=X_train.shape[2],
+            model1 = cnn_best(nb_classes=n_classes, Chans=X_train.shape[1], Samples=X_train.shape[2],
                          dropoutRate=0.5, kernLength=kernLength, C1=C1, D=D, C2=32, D1=D1)
             model1.load_weights(model_path + 'model.h5')
             probs = model1.predict(X_test)
